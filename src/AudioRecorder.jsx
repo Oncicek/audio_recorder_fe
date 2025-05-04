@@ -1,4 +1,3 @@
-// AudioRecorder.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { createFFmpeg } from "@ffmpeg/ffmpeg";
 
@@ -58,11 +57,8 @@ export default function AudioRecorder() {
       const arrayBuffer = await blob.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
       try {
-        console.info(
-          `[info] run FS.writeFile ${filename}.webm <${uint8Array.length} bytes binary file>`
-        );
         ffmpeg.FS("writeFile", `${filename}.webm`, uint8Array);
-        chunkQueueRef.current.push(filename);
+        chunkQueueRef.current.push({ filename, blob });
         processQueue();
       } catch (err) {
         console.error(`[ERR] Failed to write ${filename}.webm:`, err);
@@ -90,16 +86,39 @@ export default function AudioRecorder() {
     console.info("⏹️ Recording stopped");
   };
 
+  const getWebmDuration = async (blob) => {
+    const buffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const str = new TextDecoder().decode(bytes);
+    const timecodes = [...str.matchAll(/\x2A\xD7\xB1.*?(\x44\x89.{3})/gs)];
+    if (timecodes.length < 2) return 5;
+    const extractTime = (entry) => {
+      const match = entry[1].match(/.{2}/g);
+      if (!match) return 0;
+      const view = new DataView(
+        new Uint8Array(match.map((h) => parseInt(h, 16))).buffer
+      );
+      return view.getUint32(0) / 1000;
+    };
+    const duration = extractTime(timecodes[timecodes.length - 1]);
+    return Math.max(duration, 0.5);
+  };
+
   const processQueue = async () => {
     if (processingRef.current || !ready || chunkQueueRef.current.length === 0)
       return;
     processingRef.current = true;
 
-    const filename = chunkQueueRef.current.shift();
+    const { filename, blob } = chunkQueueRef.current.shift();
 
     try {
-      console.info(
-        `[info] run ffmpeg command: -i ${filename}.webm -c:a aac -b:a 128k -f mpegts ${filename}.ts`
+      const duration = await getWebmDuration(blob);
+      console.info(`⏱️ Detected duration: ${duration.toFixed(3)}s`);
+
+      await ffmpeg.FS(
+        "writeFile",
+        `${filename}.webm`,
+        new Uint8Array(await blob.arrayBuffer())
       );
 
       await ffmpeg.run(
@@ -125,6 +144,7 @@ export default function AudioRecorder() {
         method: "POST",
         headers: {
           "x-filename": `${filename}.ts`,
+          "x-duration": duration.toFixed(3),
           "Content-Type": "application/octet-stream",
         },
         body: output.buffer,
@@ -136,7 +156,7 @@ export default function AudioRecorder() {
 
       console.log(`[UPLOAD] ${filename}.ts uploaded successfully`);
     } catch (err) {
-      console.error(`[ERR] Conversion or upload failed for ${filename}:`, err);
+      console.error(`[ERR] Conversion or upload failed:`, err);
     } finally {
       try {
         ffmpeg.FS("unlink", `${filename}.webm`);
