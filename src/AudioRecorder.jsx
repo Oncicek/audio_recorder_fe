@@ -13,8 +13,6 @@ export default function AudioRecorder() {
   const chunkQueueRef = useRef([]);
   const processingRef = useRef(false);
   const segmentIndexRef = useRef(0);
-  const segmentsRef = useRef([]);
-  const mediaSequenceRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -35,8 +33,6 @@ export default function AudioRecorder() {
     recordingRef.current = true;
     setRecording(true);
     segmentIndexRef.current = 0;
-    segmentsRef.current = [];
-    mediaSequenceRef.current = 0;
     console.info("🎙️ Recording started");
     startNewSegment();
   };
@@ -103,21 +99,16 @@ export default function AudioRecorder() {
 
     try {
       console.info(
-        `[info] run ffmpeg command: -fflags +igndts -fflags +genpts -avoid_negative_ts make_zero -use_wallclock_as_timestamps 1 -copyts -i ${filename}.webm -c:a aac -b:a 128k -f mpegts ${filename}.ts`
+        `[info] run ffmpeg command: -i ${filename}.webm -c:a aac -b:a 128k -f mpegts ${filename}.ts`
       );
 
       await ffmpeg.run(
-        "-fflags",
-        "+igndts",
-        "-fflags",
-        "+genpts",
-        "-avoid_negative_ts",
-        "make_zero",
-        "-use_wallclock_as_timestamps",
-        "1",
-        "-copyts",
         "-i",
         `${filename}.webm`,
+        "-fflags",
+        "+genpts",
+        "-reset_timestamps",
+        "1",
         "-c:a",
         "aac",
         "-b:a",
