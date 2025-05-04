@@ -130,46 +130,20 @@ export default function AudioRecorder() {
       const output = ffmpeg.FS("readFile", `${filename}.ts`);
       console.log(`[OK] Encoded ${filename}.ts`, output.length);
 
-      segmentsRef.current.push(filename + ".ts");
-      if (segmentsRef.current.length > 5) {
-        segmentsRef.current.shift();
-        mediaSequenceRef.current++;
+      const res = await fetch("http://localhost:3000/upload", {
+        method: "POST",
+        headers: {
+          "x-filename": `${filename}.ts`,
+          "Content-Type": "application/octet-stream",
+        },
+        body: output.buffer,
+      });
+
+      if (!res.ok) {
+        throw new Error(`Upload failed: ${res.statusText}`);
       }
 
-      const playlist = [
-        "#EXTM3U",
-        "#EXT-X-VERSION:3",
-        "#EXT-X-TARGETDURATION:5",
-        `#EXT-X-MEDIA-SEQUENCE:${mediaSequenceRef.current}`,
-        ...segmentsRef.current.flatMap((seg) => ["#EXTINF:5.000,", seg]),
-        "",
-      ].join("\n");
-
-      const blob = new Blob([output.buffer], {
-        type: "application/octet-stream",
-      });
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const res = await fetch("http://localhost:3000/upload", {
-          method: "POST",
-          headers: {
-            "x-filename": `${filename}.ts`,
-            "x-playlist": encodeURIComponent(playlist),
-            "Content-Type": "application/octet-stream",
-          },
-          body: reader.result,
-        });
-
-        if (!res.ok) {
-          throw new Error(`Upload failed: ${res.statusText}`);
-        }
-
-        console.log(`[UPLOAD] ${filename}.ts uploaded successfully`);
-      };
-      reader.onerror = (e) => {
-        throw new Error("Failed to read .ts file into buffer for upload");
-      };
-      reader.readAsArrayBuffer(blob);
+      console.log(`[UPLOAD] ${filename}.ts uploaded successfully`);
     } catch (err) {
       console.error(`[ERR] Conversion or upload failed for ${filename}:`, err);
     } finally {
