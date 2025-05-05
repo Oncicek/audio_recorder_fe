@@ -124,6 +124,8 @@ export default function AudioRecorder() {
       await ffmpeg.run(
         "-i",
         `${filename}.webm`,
+        "-af",
+        "aresample=async=1:min_hard_comp=0.100:first_pts=0",
         "-fflags",
         "+genpts",
         "-reset_timestamps",
